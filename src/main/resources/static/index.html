@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QueueZero • Real-Time Virtual Queue & Load Balancer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #F6F8FB;
+            background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .ticket-cutout {
+            background: radial-gradient(circle at 0 50%, #F6F8FB 12px, white 13px),
+                        radial-gradient(circle at 100% 50%, #F6F8FB 12px, white 13px);
+            background-size: 51% 100%;
+            background-position: left, right;
+            background-repeat: no-repeat;
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen">
+
+    <header class="bg-white/90 backdrop-blur border-b border-slate-200 sticky top-0 z-20">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+                    Q0
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight text-slate-900">QueueZero Engine</h1>
+                    <p class="text-xs text-slate-500">Microservices Virtual Queue & Crowd Load Balancer</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 text-xs mono">
+                <span id="ws-status" class="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                    STOMP LIVE
+                </span>
+                <span class="px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                    LATENCY: <strong id="latency-val" class="text-teal-700">18ms</strong>
+                </span>
+                <button onclick="resetSystem()" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">
+                    Reset Demo
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                <p class="text-xs font-medium text-slate-500">Total Tokens Issued</p>
+                <p id="stat-issued" class="text-2xl font-bold text-slate-900 mt-1 mono">0</p>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                <p class="text-xs font-medium text-slate-500">Visitors Served</p>
+                <p id="stat-served" class="text-2xl font-bold text-teal-600 mt-1 mono">0</p>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                <p class="text-xs font-medium text-slate-500">Auto-Expired No-Shows</p>
+                <p id="stat-expired" class="text-2xl font-bold text-amber-600 mt-1 mono">0</p>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                <p class="text-xs font-medium text-slate-500">Physical Wait Time</p>
+                <p class="text-2xl font-bold text-indigo-600 mt-1 mono">0 mins</p>
+            </div>
+        </div>
+
+        <div class="grid lg:grid-cols-12 gap-6">
+
+            <div class="lg:col-span-5 space-y-6">
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-teal-600 bg-teal-50 px-2.5 py-1 rounded-md">Visitor Kiosk</span>
+                            <h2 class="text-xl font-bold text-slate-900 mt-2">Claim Virtual Token</h2>
+                            <p class="text-sm text-slate-500 mt-1">Scan QR or enter your name to get routed to the fastest counter.</p>
+                        </div>
+                        <div id="qrcode" class="p-2 bg-white border border-slate-200 rounded-xl shrink-0"></div>
+                    </div>
+
+                    <div class="mt-5 space-y-3">
+                        <input id="visitor-name" type="text" placeholder="Enter your name (optional)"
+                               class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm">
+
+                        <label class="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer select-none">
+                            <input id="priority-check" type="checkbox" class="w-4 h-4 rounded text-teal-600 focus:ring-teal-500">
+                            <span>Priority / Fast-Track Pass (Elderly / Accessibility)</span>
+                        </label>
+
+                        <button onclick="claimToken()"
+                                class="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm shadow-sm transition active:scale-[0.99]">
+                            Generate Instant Virtual Token →
+                        </button>
+                    </div>
+                </div>
+
+                <div id="my-pass-card" class="hidden ticket-cutout rounded-2xl border border-teal-200 p-6 shadow-md">
+                    <div class="flex justify-between items-center border-b border-dashed border-slate-200 pb-4">
+                        <div>
+                            <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Digital Queue Pass</p>
+                            <h3 id="pass-token" class="text-3xl font-bold text-teal-700 mono mt-0.5">#1001</h3>
+                        </div>
+                        <div class="text-right">
+                            <span id="pass-badge" class="px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700">WAITING</span>
+                            <p id="pass-visitor" class="text-xs text-slate-500 mt-1">Guest</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 pt-4 text-center">
+                        <div>
+                            <p class="text-[11px] text-slate-400 uppercase">Assigned</p>
+                            <p id="pass-counter" class="font-bold text-slate-800 text-sm mt-0.5">Counter 01</p>
+                        </div>
+                        <div>
+                            <p class="text-[11px] text-slate-400 uppercase">Ahead of You</p>
+                            <p id="pass-ahead" class="font-bold text-indigo-600 text-sm mt-0.5 mono">0</p>
+                        </div>
+                        <div>
+                            <p class="text-[11px] text-slate-400 uppercase">Auto-Expiry</p>
+                            <p id="pass-timer" class="font-bold text-amber-600 text-sm mt-0.5 mono">03:00</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-slate-200 rounded-2xl p-4 shadow-sm">
+                    <div class="flex items-center justify-between text-xs text-slate-400 mb-2 mono">
+                        <span>WEBSOCKET STREAM [/topic/queue-updates]</span>
+                        <span class="text-emerald-400">● ACTIVE</span>
+                    </div>
+                    <div id="event-logs" class="mono text-xs space-y-1.5 max-h-36 overflow-y-auto text-teal-300">
+                        <div>> Initializing STOMP/SockJS client...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-7 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="font-bold text-slate-900 text-lg">Dynamic Load-Balanced Counters</h2>
+                    <span class="text-xs text-slate-500">Auto-routes to least congested queue</span>
+                </div>
+
+                <div id="counters-grid" class="grid md:grid-cols-3 gap-4">
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let stompClient = null;
+        let myTokenNumber = null;
+        let myTokenExpiry = null;
+
+        new QRCode(document.getElementById("qrcode"), {
+            text: window.location.href,
+            width: 68,
+            height: 68,
+            colorDark: "#0F766E",
+            colorLight: "#FFFFFF"
+        });
+
+        function connectWebSocket() {
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null;
+            stompClient.connect({}, function () {
+                addLog("Connected to Spring Boot STOMP Broker (<100ms push)");
+                stompClient.subscribe('/topic/queue-updates', function (message) {
+                    const snapshot = JSON.parse(message.body);
+                    const latency = Math.max(8, Date.now() - snapshot.serverTimestampMs);
+                    document.getElementById("latency-val").innerText = latency + "ms";
+                    renderSnapshot(snapshot);
+                });
+                fetchInitialState();
+            });
+        }
+
+        async function fetchInitialState() {
+            const res = await fetch('/api/state');
+            const snapshot = await res.json();
+            renderSnapshot(snapshot);
+        }
+
+        async function claimToken() {
+            const name = document.getElementById("visitor-name").value;
+            const priority = document.getElementById("priority-check").checked;
+            const t0 = performance.now();
+
+            const res = await fetch('/api/claim', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, priority })
+            });
+            const token = await res.json();
+            const rtt = Math.round(performance.now() - t0);
+            document.getElementById("latency-val").innerText = rtt + "ms";
+
+            myTokenNumber = token.tokenNumber;
+            myTokenExpiry = token.expiresAtEpochMs;
+            document.getElementById("visitor-name").value = "";
+            document.getElementById("my-pass-card").classList.remove("hidden");
+            document.getElementById("pass-token").innerText = "#" + token.tokenNumber;
+            document.getElementById("pass-visitor").innerText = token.visitorName;
+            document.getElementById("pass-counter").innerText = "Counter 0" + token.counterId;
+        }
+
+        async function serveNext(counterId) {
+            await fetch(`/api/serve/${counterId}`, { method: 'POST' });
+        }
+
+        async function resetSystem() {
+            myTokenNumber = null;
+            document.getElementById("my-pass-card").classList.add("hidden");
+            await fetch('/api/reset', { method: 'POST' });
+        }
+
+        function addLog(text) {
+            if (!text) return;
+            const logs = document.getElementById("event-logs");
+            const div = document.createElement("div");
+            div.textContent = `> ${text}`;
+            logs.prepend(div);
+            if (logs.children.length > 15) logs.removeChild(logs.lastChild);
+        }
+
+        function renderSnapshot(data) {
+            document.getElementById("stat-issued").innerText = data.totalIssued;
+            document.getElementById("stat-served").innerText = data.totalServed;
+            document.getElementById("stat-expired").innerText = data.totalExpired;
+            addLog(data.latestEventLog);
+
+            const grid = document.getElementById("counters-grid");
+            grid.innerHTML = "";
+
+            data.counters.sort((a, b) => a.id - b.id).forEach(c => {
+                const load = c.waitingQueue.length + (c.currentlyServing ? 1 : 0);
+                const loadColor = load === 0 ? "bg-emerald-50 text-emerald-700" : load < 4 ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700";
+
+                if (myTokenNumber) {
+                    if (c.currentlyServing && c.currentlyServing.tokenNumber === myTokenNumber) {
+                        document.getElementById("pass-badge").innerText = "YOUR TURN! GO NOW";
+                        document.getElementById("pass-badge").className = "px-3 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white animate-bounce";
+                        document.getElementById("pass-ahead").innerText = "0";
+                    } else {
+                        const idx = c.waitingQueue.findIndex(t => t.tokenNumber === myTokenNumber);
+                        if (idx !== -1) {
+                            document.getElementById("pass-badge").innerText = "IN QUEUE";
+                            document.getElementById("pass-ahead").innerText = (idx + 1);
+                        }
+                    }
+                }
+
+                const queueChips = c.waitingQueue.slice(0, 6).map(t =>
+                    `<span class="px-2 py-1 rounded-md text-xs mono ${t.priority ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold' : 'bg-slate-100 text-slate-700'}">#${t.tokenNumber}</span>`
+                ).join("");
+
+                grid.innerHTML += `
+                    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="font-bold text-slate-900">Counter 0${c.id}</span>
+                                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${loadColor} mono">Load: ${load}</span>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-0.5">${c.name.split('•')[1] || 'Service Desk'}</p>
+
+                            <div class="mt-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
+                                <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Now Serving</p>
+                                <p class="text-2xl font-bold text-teal-700 mono mt-1">
+                                    ${c.currentlyServing ? '#' + c.currentlyServing.tokenNumber : 'IDLE'}
+                                </p>
+                                <p class="text-xs text-slate-500 truncate mt-0.5">
+                                    ${c.currentlyServing ? c.currentlyServing.visitorName : 'Ready for next visitor'}
+                                </p>
+                            </div>
+
+                            <div class="mt-4">
+                                <p class="text-xs font-medium text-slate-500 mb-2">Waiting Line (${c.waitingQueue.length})</p>
+                                <div class="flex flex-wrap gap-1.5 min-h-[32px]">
+                                    ${queueChips || '<span class="text-xs text-slate-400 italic">No waiting tokens</span>'}
+                                    ${c.waitingQueue.length > 6 ? `<span class="text-xs text-slate-500 px-1.5 py-1">+${c.waitingQueue.length - 6} more</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+
+                        <button onclick="serveNext(${c.id})"
+                                class="mt-5 w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition">
+                            Complete & Serve Next ✓
+                        </button>
+                    </div>
+                `;
+            });
+        }
+
+        setInterval(() => {
+            if (!myTokenExpiry) return;
+            const diff = Math.max(0, Math.floor((myTokenExpiry - Date.now()) / 1000));
+            const mins = String(Math.floor(diff / 60)).padStart(2, '0');
+            const secs = String(diff % 60).padStart(2, '0');
+            document.getElementById("pass-timer").innerText = `${mins}:${secs}`;
+        }, 1000);
+
+        connectWebSocket();
+    </script>
+</body>
+</html>
