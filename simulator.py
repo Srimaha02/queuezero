@@ -3,7 +3,7 @@ import requests
 import time
 import random
 
-BASE_URL = "http://localhost:8080/api/claim"
+BASE_URL = "https://queuezero-gotk.onrender.com.onrender.com/api/claim"
 TOTAL_VISITORS = 30
 
 NAMES = ["Aarav", "Diya", "Karthik", "Meera", "Vikram", "Ananya", "Rohan", "Priya", "Siddharth", "Kavya"]
