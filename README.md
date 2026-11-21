@@ -1,4 +1,4 @@
-# QueueZero — Real-Time Microservices-Driven Virtual Queue & Crowd Load-Balancing Engine
+# QueueZero -- Real-Time Microservices-Driven Virtual Queue & Crowd Load-Balancing Engine
 
 > **Built for INNOVATE Hackathon 2026** | Track: Web & Mobile Development  
 > **Lead Developer:** Srimahalakshmi R ([@Srimaha02](https://github.com/Srimaha02))
@@ -38,3 +38,15 @@ Traditional manual queues suffer from severe crowd congestion, unbalanced counte
 └─────────────────────────┘                                 ┌──────────────────────────────────┐
                                                             │   Docker Container (Cloud)       │
                                                             └──────────────────────────────────┘
+
+
+
+## Technology Stack
+
+| Layer | Technologies Used | Purpose |
+| :--- | :--- | :--- |
+| **Backend Core** | **Java 21**, **Spring Boot 3** (Spring Web, Scheduled Executors) | High-throughput REST APIs, thread-safe token sequencing (`AtomicInteger`), least-congested counter routing, and automated 3-minute no-show cleanup |
+| **Real-Time Streaming** | **WebSockets (STOMP & SockJS)** | Persistent bi-directional event channels (`/topic/queue-updates`) for sub-second (`<100ms`) live queue updates without HTTP polling |
+| **Frontend Dashboard** | **HTML5**, **Tailwind CSS**, **JavaScript (ES6)**, **QRCode.js** | Responsive Visitor Kiosk, dynamic QR generator, digital boarding pass with live countdown, and Counter Operator console |
+| **Load & Traffic Simulator** | **Python 3.x** (`concurrent.futures`, `requests`) | Multi-threaded concurrent crowd injection engine (`simulator.py`) for stress-testing load balancing under traffic spikes |
+| **DevOps & Cloud Hosting** | **Docker** (Multi-stage Maven + Eclipse Temurin 21 Alpine), **Render** | Containerized microservice packaging and live cloud deployment |
